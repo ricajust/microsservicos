@@ -9,15 +9,13 @@ namespace Alunos.API.Models
         [Key]
         public Guid Id { get; set; }
 
-        [Required]
         [StringLength(255, MinimumLength = 3)]
         [Column("nome")]
-        public required string Nome { get; set; }
+        public string Nome { get; set; }
 
-        [Required]
         [Column("cpf")]
         [MaxLength(255)]
-        public required string Cpf { get; set; }
+        public string Cpf { get; set; }
 
         [Column("data_nascimento")]
         public DateTime? DataNascimento { get; set; }
@@ -51,10 +49,9 @@ namespace Alunos.API.Models
         [Column("cep")]
         public string? Cep { get; set; } // Tornando nullable
 
-        [Required]
         [StringLength(255, MinimumLength = 3)]
         [Column("senha")]
-        public required string Senha { get; set; }
+        public string Senha { get; set; }
 
         // Navigation property for the Aluno (pode ser nulo se um usuário não for um aluno)
         public Aluno? Aluno { get; set; }
