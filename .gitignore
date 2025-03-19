@@ -1,0 +1,45 @@
+# Binaries
+**/bin/*
+**/obj/*
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.sln.docstates
+*.cache
+*.resharper.*
+_ReSharper*/
+
+# VS Code
+.vscode/
+
+# NuGet
+packages/
+*.nupkg
+NuGet.Config
+
+# Package Manager Console
+*.ps1xml
+
+# Build Results
+Publish/
+*.csproj.vspscc
+*.pfx
+
+# Logs
+*.log
+*.svclog
+
+# Test Results
+TestResults/
+*.fakesassembly
+
+# Docker
+# If you want to ignore your Dockerfile and related files, uncomment the following lines:
+# Dockerfile
+# .dockerignore
+
+# Application Specific
+appsettings.Development.json
+*.PublishSettings
