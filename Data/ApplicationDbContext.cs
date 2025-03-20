@@ -16,8 +16,10 @@ namespace Alunos.API.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // Aqui você pode adicionar configurações específicas para o seu modelo
-            // Por exemplo, configurar relacionamentos, chaves compostas, etc.
-        }
+            // Configuração para garantir que o CPF seja único na tabela Usuarios
+            modelBuilder.Entity<Usuario>()
+                .HasIndex(u => u.Cpf)
+                .IsUnique();
+                }
     }
 }

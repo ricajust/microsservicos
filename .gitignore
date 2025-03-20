@@ -2,6 +2,16 @@
 **/bin/*
 **/obj/*
 
+# Ignore Migrations (se quiser ignorar elas globalmente)
+**/Migrations/
+# Ou, se quiser ignorar só as dlls:
+*.dll
+
+# Ignore a pasta publish (geralmente criada pelo dotnet publish)
+publish/
+bin/
+obj/
+
 # Visual Studio
 .vs/
 *.suo

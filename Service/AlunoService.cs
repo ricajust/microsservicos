@@ -1,6 +1,7 @@
 using Alunos.API.DTOs;
 using Alunos.API.Models;
 using Alunos.API.Repositories;
+using Alunos.API.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,102 +12,107 @@ namespace Alunos.API.Services
     public class AlunoService : IAlunoService
     {
         private readonly IAlunoRepository _alunoRepository;
+        
+        // Instancia a classe de conversão (Utils)
+        private readonly Conversor _conversor;
 
         public AlunoService(IAlunoRepository alunoRepository)
         {
             _alunoRepository = alunoRepository;
+            _conversor = new Conversor();
         }
 
-        public async Task<AlunoDTO> CreateAsync(AlunoDTO alunoDTO)
+        public async Task<AlunoResponseDTO> CreateAsync(AlunoDTO alunoDTO)
         {
-            var aluno = new Aluno
-            {
-                Id = alunoDTO.Id == Guid.Empty ? Guid.NewGuid() : alunoDTO.Id,
-                Usuario = new Usuario
-                {
-                    Id = alunoDTO.Id == Guid.Empty ? Guid.NewGuid() : alunoDTO.Id,
-                    Nome = alunoDTO.Nome,
-                    Cpf = alunoDTO.Cpf,
-                    DataNascimento = alunoDTO.DataNascimento,
-                    Email = alunoDTO.Email,
-                    Telefone = alunoDTO.Telefone,
-                    Endereco = alunoDTO.Endereco,
-                    Bairro = alunoDTO.Bairro,
-                    Cidade = alunoDTO.Cidade,
-                    Uf = alunoDTO.Uf,
-                    Cep = alunoDTO.Cep,
-                    Senha = alunoDTO.Senha
-                }
-            };
-
+            var aluno = _conversor.ConverterAlunoDTOEmEntidade(alunoDTO);
             await _alunoRepository.AddAsync(aluno);
-            return ConvertToDto(aluno);
+
+            return _conversor.ConverterAlunoEmResponseDTO(aluno);
         }
 
-        public async Task<AlunoDTO> GetByIdAsync(Guid id)
-        {
-            var aluno = await _alunoRepository.GetByIdAsync(id);
-            return aluno == null ? null : ConvertToDto(aluno);
-        }
-
-        public async Task<IEnumerable<AlunoDTO>> GetAllAsync()
+        public async Task<IEnumerable<AlunoResponseDTO>> GetAllAsync()
         {
             var alunos = await _alunoRepository.GetAllAsync();
-            return alunos.Select(ConvertToDto);
-        }
 
-        public async Task<AlunoDTO> UpdateAsync(Guid id, AlunoDTO alunoDTO)
-        {
-            var existingAluno = await _alunoRepository.GetByIdAsync(id);
-            if (existingAluno == null)
-            {
-                return null;
-            }
-
-            existingAluno.Usuario.Nome = alunoDTO.Nome;
-            existingAluno.Usuario.Cpf = alunoDTO.Cpf;
-            existingAluno.Usuario.DataNascimento = alunoDTO.DataNascimento;
-            existingAluno.Usuario.Email = alunoDTO.Email;
-            existingAluno.Usuario.Telefone = alunoDTO.Telefone;
-            existingAluno.Usuario.Endereco = alunoDTO.Endereco;
-            existingAluno.Usuario.Bairro = alunoDTO.Bairro;
-            existingAluno.Usuario.Cidade = alunoDTO.Cidade;
-            existingAluno.Usuario.Uf = alunoDTO.Uf;
-            existingAluno.Usuario.Cep = alunoDTO.Cep;
-            existingAluno.Usuario.Senha = alunoDTO.Senha;
-
-            await _alunoRepository.UpdateAsync(existingAluno);
-            return ConvertToDto(existingAluno);
-        }
-
-        public async Task<AlunoDTO> DeleteAsync(Guid id)
-        {
-            var alunoToDelete = await _alunoRepository.GetByIdAsync(id);
-            if (alunoToDelete == null)
-            {
-                return null;
-            }
-            await _alunoRepository.DeleteAsync(id);
-            return ConvertToDto(alunoToDelete);
-        }
-
-        private AlunoDTO ConvertToDto(Aluno aluno)
-        {
-            return new AlunoDTO
+            // Mapeando entidades para ResponseDTOs
+            return alunos.Select(aluno => new AlunoResponseDTO
             {
                 Id = aluno.Id,
-                Nome = aluno.Usuario.Nome,
-                Cpf = aluno.Usuario.Cpf,
-                DataNascimento = aluno.Usuario.DataNascimento,
-                Email = aluno.Usuario.Email,
-                Telefone = aluno.Usuario.Telefone,
-                Endereco = aluno.Usuario.Endereco,
-                Bairro = aluno.Usuario.Bairro,
-                Cidade = aluno.Usuario.Cidade,
-                Uf = aluno.Usuario.Uf,
-                Cep = aluno.Usuario.Cep,
-                Senha = aluno.Usuario.Senha
+                Nome = aluno.Nome,
+                Cpf = aluno.Cpf,
+                DataNascimento = aluno.DataNascimento,
+                Email = aluno.Email,
+                Telefone = aluno.Telefone,
+                Endereco = aluno.Endereco,
+                Bairro = aluno.Bairro,
+                Cidade = aluno.Cidade,
+                Uf = aluno.Uf,
+                Cep = aluno.Cep
+            });
+        }
+
+        public async Task<AlunoResponseDTO> GetByIdAsync(Guid id)
+        {
+            var aluno = await _alunoRepository.GetByIdAsync(id);
+
+            if (aluno == null)
+                return null;
+
+            return new AlunoResponseDTO
+            {
+                Id = aluno.Id,
+                Nome = aluno.Nome,
+                Cpf = aluno.Cpf,
+                DataNascimento = aluno.DataNascimento,
+                Email = aluno.Email,
+                Telefone = aluno.Telefone,
+                Endereco = aluno.Endereco,
+                Bairro = aluno.Bairro,
+                Cidade = aluno.Cidade,
+                Uf = aluno.Uf,
+                Cep = aluno.Cep
             };
         }
+
+        public async Task<Aluno> UpdateAsync(Guid id, AlunoDTO alunoDTO)
+        {
+            var aluno = await _alunoRepository.GetByIdAsync(id);
+
+            if (aluno == null)
+                return null; // Retorna null se o aluno não for encontrado
+
+            // Atualiza os campos do aluno
+            aluno.Nome = alunoDTO.Nome;
+            aluno.Cpf = alunoDTO.Cpf;
+            aluno.DataNascimento = alunoDTO.DataNascimento;
+            aluno.Email = alunoDTO.Email;
+            aluno.Telefone = alunoDTO.Telefone;
+            aluno.Endereco = alunoDTO.Endereco;
+            aluno.Bairro = alunoDTO.Bairro;
+            aluno.Cidade = alunoDTO.Cidade;
+            aluno.Uf = alunoDTO.Uf;
+            aluno.Cep = alunoDTO.Cep;
+
+            // Se quiser permitir a atualização de senha:
+            if (!string.IsNullOrEmpty(alunoDTO.Senha))
+                aluno.Senha = alunoDTO.Senha; // Faça hash se necessário
+
+            _alunoRepository.UpdateAsync(aluno);
+
+            return aluno; // Retorna o aluno atualizado
+        }
+
+        public async Task<bool> DeleteAsync(Guid id)
+        {
+            var aluno = await _alunoRepository.GetByIdAsync(id);
+
+            if (aluno == null)
+                return false;
+
+            _alunoRepository.DeleteAsync(id);
+
+            return true;
+        }
+        
     }
 }
