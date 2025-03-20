@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 
 [ApiController]
-[Route("[controller]")]
+[Route("api/[controller]")] 
 public class AlunosController : ControllerBase
 {
     private readonly IAlunoService _alunoService;
@@ -43,36 +43,7 @@ public class AlunosController : ControllerBase
             Cep = alunoCriado.Cep
         };
 
-        return CreatedAtAction(nameof(GetByIdAsync), new { id = alunoCriado.Id }, responseDTO);
-    }
-
-    [HttpGet("{id}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<AlunoResponseDTO>> GetByIdAsync(Guid id)
-    {
-        var alunoDTO = await _alunoService.GetByIdAsync(id);
-        if (alunoDTO == null)
-        {
-            return NotFound();
-        }
-
-        var responseDTO = new AlunoResponseDTO
-        {
-            Id = alunoDTO.Id,
-            Nome = alunoDTO.Nome,
-            Cpf = alunoDTO.Cpf,
-            DataNascimento = alunoDTO.DataNascimento,
-            Email = alunoDTO.Email,
-            Telefone = alunoDTO.Telefone,
-            Endereco = alunoDTO.Endereco,
-            Bairro = alunoDTO.Bairro,
-            Cidade = alunoDTO.Cidade,
-            Uf = alunoDTO.Uf,
-            Cep = alunoDTO.Cep
-        };
-
-        return Ok(responseDTO);
+        return CreatedAtRoute(nameof(GetByIdAsync), new { id = responseDTO.Id }, responseDTO);
     }
 
     [HttpGet]
@@ -99,6 +70,36 @@ public class AlunosController : ControllerBase
             });
         }
         return Ok(responseDTOs);
+    }
+
+    // Adicione um NameAttribute à sua action GetByIdAsync
+    [HttpGet("{id}", Name = "GetByIdAsync")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AlunoResponseDTO>> GetByIdAsync(Guid id)
+    {
+        var alunoDTO = await _alunoService.GetByIdAsync(id);
+        if (alunoDTO == null)
+        {
+            return NotFound();
+        }
+
+        var responseDTO = new AlunoResponseDTO
+        {
+            Id = alunoDTO.Id,
+            Nome = alunoDTO.Nome,
+            Cpf = alunoDTO.Cpf,
+            DataNascimento = alunoDTO.DataNascimento,
+            Email = alunoDTO.Email,
+            Telefone = alunoDTO.Telefone,
+            Endereco = alunoDTO.Endereco,
+            Bairro = alunoDTO.Bairro,
+            Cidade = alunoDTO.Cidade,
+            Uf = alunoDTO.Uf,
+            Cep = alunoDTO.Cep
+        };
+
+        return Ok(responseDTO);
     }
 
     [HttpPut("{id}")]
