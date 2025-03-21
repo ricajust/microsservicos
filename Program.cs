@@ -8,7 +8,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Adicionando serviços ao container
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer("Server=localhost,1435;Database=AlunosDb;User ID=sa;Password=Edug0@2025!;TrustServerCertificate=True"));
+builder.Services.AddDbContext<ApplicationDbContext>(
+    options => options.UseSqlServer("Server=sql-alunos,1433;Database=AlunosDb;User ID=sa;Password=Edug0@2025!;TrustServerCertificate=True"));
 builder.Services.AddControllers();
 
 // Registrando os serviços e repositórios
