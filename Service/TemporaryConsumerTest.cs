@@ -123,9 +123,10 @@ namespace Alunos.API.Services
                                 Cep = alunoDTO.Cep,
                                 Senha = alunoDTO.Senha // Nota: Implementar hash na senha
                             };
-
+                            _logger.LogInformation("⏳ Chamando SaveChangesAsync para criação");
                             await dbContext.Alunos.AddAsync(novoAluno);
                             _logger.LogInformation($"✅ Aluno criado - ID: {novoAluno.Id}");
+                            await dbContext.SaveChangesAsync();
                         }
                         else
                         {
@@ -145,12 +146,10 @@ namespace Alunos.API.Services
                             {
                                 existingAluno.Senha = alunoDTO.Senha;
                             }
-
+                            _logger.LogInformation("⏳ Chamando SaveChangesAsync para atualização");
                             await dbContext.SaveChangesAsync(); // Salva as alterações no contexto rastreado
                             _logger.LogInformation($"🔄 Aluno atualizado - ID: {existingAluno.Id}");
                         }
-
-                        await dbContext.SaveChangesAsync();
                     }
                 }
                 catch (JsonException jsonEx)
