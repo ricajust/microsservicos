@@ -146,9 +146,7 @@ namespace Alunos.API.Services
                                 existingAluno.Senha = alunoDTO.Senha;
                             }
 
-                            dbContext.Usuarios.Attach(existingAluno); // Anexa ao contexto (Usuarios porque Aluno herda de Usuario)
-                            dbContext.Entry(existingAluno).State = Microsoft.EntityFrameworkCore.EntityState.Modified; // Marca como modificado
-
+                            await dbContext.SaveChangesAsync(); // Salva as alterações no contexto rastreado
                             _logger.LogInformation($"🔄 Aluno atualizado - ID: {existingAluno.Id}");
                         }
 
