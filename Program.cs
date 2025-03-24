@@ -9,6 +9,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Adicione isto temporariamente no Program.cs
+builder.Services.AddHostedService<TemporaryConsumerTest>(); // <-- Linha temporária
+// builder.Services.AddHostedService<AlunoEventHandler>();
+
 // Pegando a string de conexão do appsettings.json
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
@@ -16,6 +20,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(
     options => options.UseSqlServer(connectionString));
 
 builder.Services.AddControllers();
+
 
 // Registrando os serviços e repositórios
 builder.Services.AddScoped<IAlunoService, AlunoService>();
