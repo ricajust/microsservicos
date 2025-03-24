@@ -10,6 +10,8 @@ using System.Text.Json.Nodes;
 using System.Linq;
 using System;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore; // Certifique-se que esta linha está aqui
 
 namespace Alunos.API.Services
 {
@@ -62,118 +64,127 @@ namespace Alunos.API.Services
                     {
                         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-                        // Desserializa a mensagem completa usando JsonNode
-                        JsonNode eventoNode = JsonNode.Parse(message);
-                        var alunoNode = eventoNode?["aluno"];
-
-                        if (alunoNode == null)
+                        // Verifica primeiro se é uma mensagem de exclusão (contém apenas o "id")
+                        if (message.StartsWith("{\"id\":") && message.EndsWith("}") && !message.Contains("\"nome\"") && !message.Contains("\"cpf\""))
                         {
-                            _logger.LogWarning("Estrutura da mensagem inválida");
-                            return;
-                        }
-
-                        var alunoDTO = alunoNode.Deserialize<AlunoDTO>(_jsonOptions); // Usando _jsonOptions aqui
-                        _logger.LogInformation($"🔄 Processando aluno ID: {alunoDTO.Id}");
-
-                        // Tenta converter a data de nascimento do array para DateTime
-                        if (alunoNode["dataNascimento"]?.AsArray().Count == 3)
-                        {
-                            var dataNascimentoArray = alunoNode["dataNascimento"]!.AsArray().Select(n => n.GetValue<int>()).ToArray();
-                            try
+                            var alunoExcluidoDTO = JsonSerializer.Deserialize<AlunoExcluidoDTO>(message, _jsonOptions);
+                            if (alunoExcluidoDTO != null)
                             {
-                                alunoDTO.DataNascimento = new DateTime(dataNascimentoArray[0], dataNascimentoArray[1], dataNascimentoArray[2]);
-                                _logger.LogInformation($"✅ Data de nascimento convertida para: {alunoDTO.DataNascimento}");
+                                _logger.LogInformation($"Tentando excluir aluno com ID: {alunoExcluidoDTO.Id}");
+                                var alunoParaExcluir = await dbContext.Alunos.FindAsync(alunoExcluidoDTO.Id);
+                                if (alunoParaExcluir != null)
+                                {
+                                    dbContext.Alunos.Remove(alunoParaExcluir);
+                                    await dbContext.SaveChangesAsync();
+                                    _logger.LogInformation($"Aluno excluído com ID: {alunoParaExcluir.Id}");
+                                }
+                                else
+                                {
+                                    _logger.LogWarning($"Tentativa de excluir aluno com ID {alunoExcluidoDTO.Id}, mas não encontrado.");
+                                }
                             }
-                            catch (Exception ex)
+                            else
                             {
-                                _logger.LogError(ex, "❌ Erro ao converter data de nascimento");
+                                _logger.LogWarning($"Erro ao desserializar AlunoExcluidoDTO: {message}");
                             }
                         }
-                        else
+                        // Se não for exclusão, verifica se é criação ou atualização (contém "nome" e "cpf")
+                        else if (message.Contains("\"nome\"") && message.Contains("\"cpf\""))
                         {
-                            _logger.LogWarning("⚠️ Formato da data de nascimento inválido ou ausente");
-                        }
+                            JsonNode eventoNode = JsonNode.Parse(message);
+                            var alunoNode = eventoNode?["aluno"];
 
-                        // Limpa o CPF (remove caracteres não numéricos)
-                        alunoDTO.Cpf = alunoDTO.Cpf?.Replace("[^0-9]", "");
-
-                        if (string.IsNullOrWhiteSpace(alunoDTO.Cpf))
-                        {
-                            _logger.LogError("❌ CPF não pode ser nulo ou vazio");
-                            return;
-                        }
-
-                        var existingAluno = await dbContext.Alunos.FindAsync(alunoDTO.Id);
-
-                        if (existingAluno == null)
-                        {
-                            // Cria novo aluno
-                            var novoAluno = new Aluno
+                            if (alunoNode == null)
                             {
-                                Id = alunoDTO.Id,
-                                Nome = alunoDTO.Nome,
-                                Cpf = alunoDTO.Cpf,
-                                DataNascimento = alunoDTO.DataNascimento,
-                                Email = alunoDTO.Email,
-                                Telefone = alunoDTO.Telefone,
-                                Endereco = alunoDTO.Endereco,
-                                Bairro = alunoDTO.Bairro,
-                                Cidade = alunoDTO.Cidade,
-                                Uf = alunoDTO.Uf,
-                                Cep = alunoDTO.Cep,
-                                Senha = alunoDTO.Senha // Nota: Implementar hash na senha
-                            };
-                            _logger.LogInformation("⏳ Chamando SaveChangesAsync para criação");
-                            await dbContext.Alunos.AddAsync(novoAluno);
-                            _logger.LogInformation($"✅ Aluno criado - ID: {novoAluno.Id}");
-                            await dbContext.SaveChangesAsync();
-                        }
-                        else
-                        {
-                            // Atualiza aluno existente
-                            existingAluno.Nome = alunoDTO.Nome;
-                            existingAluno.Cpf = alunoDTO.Cpf;
-                            existingAluno.DataNascimento = alunoDTO.DataNascimento;
-                            existingAluno.Email = alunoDTO.Email;
-                            existingAluno.Telefone = alunoDTO.Telefone;
-                            existingAluno.Endereco = alunoDTO.Endereco;
-                            existingAluno.Bairro = alunoDTO.Bairro;
-                            existingAluno.Cidade = alunoDTO.Cidade;
-                            existingAluno.Uf = alunoDTO.Uf;
-                            existingAluno.Cep = alunoDTO.Cep;
+                                _logger.LogWarning("Estrutura da mensagem de aluno (criação/atualização) inválida");
+                                return;
+                            }
 
-                            if (!string.IsNullOrEmpty(alunoDTO.Senha))
+                            var alunoDTO = alunoNode.Deserialize<AlunoDTO>(_jsonOptions);
+                            _logger.LogInformation($"🔄 Processando aluno ID: {alunoDTO.Id}");
+
+                            // Processamento da data de nascimento
+                            if (alunoNode["dataNascimento"]?.AsArray().Count == 3)
                             {
+                                var dataArray = alunoNode["dataNascimento"].AsArray();
+                                alunoDTO.DataNascimento = new DateTime(
+                                    dataArray[0].GetValue<int>(),
+                                    dataArray[1].GetValue<int>(),
+                                    dataArray[2].GetValue<int>());
+                            }
+
+                            // Limpeza do CPF
+                            alunoDTO.Cpf = Regex.Replace(alunoDTO.Cpf ?? "", "[^0-9]", "");
+
+                            if (string.IsNullOrWhiteSpace(alunoDTO.Cpf))
+                            {
+                                _logger.LogError("CPF inválido");
+                                return;
+                            }
+
+                            var existingAluno = await dbContext.Alunos
+                                .Where(a => a.Id == alunoDTO.Id)
+                                .FirstOrDefaultAsync();
+
+                            if (existingAluno == null)
+                            {
+                                // Criação de novo aluno
+                                var novoAluno = new Aluno
+                                {
+                                    Id = alunoDTO.Id,
+                                    Nome = alunoDTO.Nome,
+                                    Cpf = alunoDTO.Cpf,
+                                    DataNascimento = alunoDTO.DataNascimento,
+                                    Email = alunoDTO.Email,
+                                    Telefone = alunoDTO.Telefone,
+                                    Endereco = alunoDTO.Endereco,
+                                    Bairro = alunoDTO.Bairro,
+                                    Cidade = alunoDTO.Cidade,
+                                    Uf = alunoDTO.Uf,
+                                    Cep = alunoDTO.Cep,
+                                    Senha = alunoDTO.Senha
+                                };
+                                await dbContext.Alunos.AddAsync(novoAluno);
+                                _logger.LogInformation($"✅ Aluno criado - ID: {novoAluno.Id}");
+                            }
+                            else
+                            {
+                                // Atualização do aluno existente
+                                existingAluno.Nome = alunoDTO.Nome;
+                                existingAluno.Cpf = alunoDTO.Cpf;
+                                existingAluno.DataNascimento = alunoDTO.DataNascimento;
+                                existingAluno.Email = alunoDTO.Email;
+                                existingAluno.Telefone = alunoDTO.Telefone;
+                                existingAluno.Endereco = alunoDTO.Endereco;
+                                existingAluno.Bairro = alunoDTO.Bairro;
+                                existingAluno.Cidade = alunoDTO.Cidade;
+                                existingAluno.Uf = alunoDTO.Uf;
+                                existingAluno.Cep = alunoDTO.Cep;
                                 existingAluno.Senha = alunoDTO.Senha;
+
+                                await dbContext.SaveChangesAsync();
+                                _logger.LogInformation($"🔄 Aluno atualizado - ID: {existingAluno.Id}");
                             }
-                            _logger.LogInformation("⏳ Chamando SaveChangesAsync para atualização");
-                            await dbContext.SaveChangesAsync(); // Salva as alterações no contexto rastreado
-                            _logger.LogInformation($"🔄 Aluno atualizado - ID: {existingAluno.Id}");
                         }
+                        else
+                        {
+                            _logger.LogWarning($"Estrutura da mensagem desconhecida ou inválida: {message}");
+                        }
+
+                        await dbContext.SaveChangesAsync();
+                        _channel.BasicAck(ea.DeliveryTag, false);
                     }
-                }
-                catch (JsonException jsonEx)
-                {
-                    _logger.LogError(jsonEx, "❌ Erro na desserialização JSON");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "❌ Erro ao processar mensagem");
-                }
-                finally
-                {
-                    _channel.BasicAck(ea.DeliveryTag, false);
+                    _logger.LogError(ex, "Erro ao processar mensagem");
+                    // Não fazemos Ack para tentar reprocessar
                 }
             };
 
-            _channel.BasicConsume(
-                queue: "alunos.queue",
-                autoAck: false,
-                consumer: consumer);
-
+            _channel.BasicConsume(queue: "alunos.queue", autoAck: false, consumer: consumer);
             return Task.CompletedTask;
         }
-
         public Task StopAsync(CancellationToken cancellationToken)
         {
             _logger.LogInformation("Encerrando consumidor...");
