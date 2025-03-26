@@ -2,16 +2,14 @@ version: '3.8'
 
 services:
   alunosapi:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: api-alunos
     ports:
       - "5113:8080"
     depends_on:
       - sql-alunos
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ConnectionStrings__DefaultConnection=Server=sql-alunos,1433;Database=AlunosDb;User ID=sa;Password=Edug0@2025!;TrustServerCertificate=True
+      - ConnectionStrings__DefaultConnection=Server=sql-alunos,1499;Database=AlunosDb;User ID=sa;Password=SenhaMuitoForte@123;TrustServerCertificate=True
     networks:
       - edugo_tcc_net
 
