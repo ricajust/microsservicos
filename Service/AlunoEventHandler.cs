@@ -60,6 +60,40 @@ namespace Alunos.API.Services
                     var message = Encoding.UTF8.GetString(body);
                     _logger.LogInformation($"📥 Mensagem recebida: {message}");
 
+                    JsonNode eventoNode = JsonNode.Parse(message);
+                    var originNode = eventoNode?["origin"];
+                    string origin = originNode?.GetValue<string>();
+                    var eventTypeNode = eventoNode?["eventType"];
+                    string eventType = eventTypeNode?.GetValue<string>();
+
+                    if (!string.IsNullOrEmpty(origin) && origin.ToLower() == "monolito")
+                    {
+                        if (!string.IsNullOrEmpty(eventType))
+                        {
+                            if (eventType.ToLower() == "alunocriado")
+                            {
+                                _logger.LogInformation($"Evento AlunoCriado ignorado (origem: monolito).");
+                                _channel.BasicAck(ea.DeliveryTag, false);
+                                return;
+                            }
+                            else if (eventType.ToLower() == "alunoatualizado")
+                            {
+                                _logger.LogInformation($"Evento AlunoAtualizado ignorado (origem: monolito).");
+                                _channel.BasicAck(ea.DeliveryTag, false);
+                                return;
+                            }
+                            else if (eventType.ToLower() == "alunoexcluido")
+                            {
+                                _logger.LogInformation($"Evento AlunoExcluido ignorado (origem: monolito).");
+                                _channel.BasicAck(ea.DeliveryTag, false);
+                                return;
+                            }
+                        }
+                        _logger.LogInformation($"Evento ignorado (origem: monolito, tipo desconhecido).");
+                        _channel.BasicAck(ea.DeliveryTag, false);
+                        return;
+                    }
+
                     using (var scope = _serviceProvider.CreateScope())
                     {
                         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -91,7 +125,6 @@ namespace Alunos.API.Services
                         // Se não for exclusão, verifica se é criação ou atualização (contém "nome" e "cpf")
                         else if (message.Contains("\"nome\"") && message.Contains("\"cpf\""))
                         {
-                            JsonNode eventoNode = JsonNode.Parse(message);
                             var alunoNode = eventoNode?["aluno"];
 
                             if (alunoNode == null)
@@ -159,7 +192,8 @@ namespace Alunos.API.Services
                                 existingAluno.Bairro = alunoDTO.Bairro;
                                 existingAluno.Cidade = alunoDTO.Cidade;
                                 existingAluno.Uf = alunoDTO.Uf;
-                                existingAluno.Cep = alunoDTO.Cep;
+                                existingAluno.Cep = existingAluno.Cep; // Mantém o CEP existente, se não vier no DTO
+                                if (!string.IsNullOrEmpty(alunoDTO.Cep)) existingAluno.Cep = alunoDTO.Cep;
                                 existingAluno.Senha = alunoDTO.Senha;
 
                                 await dbContext.SaveChangesAsync();
