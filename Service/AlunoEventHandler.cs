@@ -161,6 +161,18 @@ namespace Alunos.API.Services
 
                             if (existingAluno == null)
                             {
+                                // Verifica se já existe um aluno com o mesmo CPF
+                                var alunoComMesmoCpf = await dbContext.Alunos
+                                    .Where(a => a.Cpf == alunoDTO.Cpf)
+                                    .FirstOrDefaultAsync();
+
+                                if (alunoComMesmoCpf != null)
+                                {
+                                    _logger.LogWarning($"Tentativa de criar aluno com CPF duplicado: {alunoDTO.Cpf}");
+                                    _channel.BasicAck(ea.DeliveryTag, false);
+                                    return;
+                                }
+
                                 // Criação de novo aluno
                                 var novoAluno = new Aluno
                                 {
