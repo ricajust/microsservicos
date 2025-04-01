@@ -47,7 +47,7 @@ namespace Alunos.API.Services
             {
                 channel.ExchangeDeclare(exchange: "alunos.reverse.exchange",
                                       type: ExchangeType.Fanout,
-                                      durable: true, 
+                                      durable: true,
                                       autoDelete: true);
 
                 var evento = new AlunoCriadoNoMicrosservicoEvent
@@ -139,28 +139,27 @@ namespace Alunos.API.Services
 
         public async Task<Aluno> UpdateAsync(Guid id, AlunoDTO alunoDTO)
         {
-            var aluno = await _alunoRepository.GetByIdAsync(id);
+            var alunoExistente = await _alunoRepository.GetByIdAsync(id);
 
-            if (aluno == null)
+            if (alunoExistente == null)
                 return null; // Retorna null se o aluno não for encontrado
 
-            // Atualiza os campos do aluno
-            aluno.Nome = alunoDTO.Nome;
-            aluno.Cpf = alunoDTO.Cpf;
-            aluno.DataNascimento = alunoDTO.DataNascimento;
-            aluno.Email = alunoDTO.Email;
-            aluno.Telefone = alunoDTO.Telefone;
-            aluno.Endereco = alunoDTO.Endereco;
-            aluno.Bairro = alunoDTO.Bairro;
-            aluno.Cidade = alunoDTO.Cidade;
-            aluno.Uf = alunoDTO.Uf;
-            aluno.Cep = alunoDTO.Cep;
+            // Atualiza os campos do aluno (EXCLUINDO O CPF)
+            alunoExistente.Nome = alunoDTO.Nome;
+            alunoExistente.DataNascimento = alunoDTO.DataNascimento;
+            alunoExistente.Email = alunoDTO.Email;
+            alunoExistente.Telefone = alunoDTO.Telefone;
+            alunoExistente.Endereco = alunoDTO.Endereco;
+            alunoExistente.Bairro = alunoDTO.Bairro;
+            alunoExistente.Cidade = alunoDTO.Cidade;
+            alunoExistente.Uf = alunoDTO.Uf;
+            alunoExistente.Cep = alunoDTO.Cep;
 
             // Para permitir a atualização de senha:
             if (!string.IsNullOrEmpty(alunoDTO.Senha))
-                aluno.Senha = alunoDTO.Senha; // Faça hash se necessário
+                alunoExistente.Senha = alunoDTO.Senha; // Faça hash se necessário
 
-            _alunoRepository.UpdateAsync(aluno);
+            _alunoRepository.UpdateAsync(alunoExistente);
 
             // Publicar o evento AlunoAtualizadoNoMicrosservicoEvent
             using (var connection = _connectionFactory.CreateConnection())
@@ -170,33 +169,35 @@ namespace Alunos.API.Services
 
                 var evento = new AlunoAtualizadoNoMicrosservicoEvent
                 {
-                    Id = aluno.Id,
-                    Nome = aluno.Nome,
-                    Cpf = aluno.Cpf,
-                    DataNascimento = aluno.DataNascimento?.ToString("yyyy-MM-dd") ?? string.Empty,
-                    // DataNascimento = aluno.DataNascimento ?? DateTime.MinValue,
-                    Email = aluno.Email,
-                    Telefone = aluno.Telefone,
-                    Endereco = aluno.Endereco,
-                    Bairro = aluno.Bairro,
-                    Cidade = aluno.Cidade,
-                    Uf = aluno.Uf,
-                    Cep = aluno.Cep,
-                    Origem = "Microsservico"
+                    Id = alunoExistente.Id,
+                    Nome = alunoExistente.Nome,
+                    Cpf = alunoExistente.Cpf, // Mantém o CPF existente
+                    DataNascimento = alunoExistente.DataNascimento?.ToString("yyyy-MM-dd") ?? string.Empty,
+                    Email = alunoExistente.Email,
+                    Telefone = alunoExistente.Telefone,
+                    Endereco = alunoExistente.Endereco,
+                    Bairro = alunoExistente.Bairro,
+                    Cidade = alunoExistente.Cidade,
+                    Uf = alunoExistente.Uf,
+                    Cep = alunoExistente.Cep,
+                    Senha = alunoDTO.Senha, // Usar a senha do DTO para atualização
+                    Origem = "Microsservico",
+                    EventType = "AlunoAtualizado"
                 };
 
                 var jsonEvento = JsonSerializer.Serialize(evento);
                 _logger.LogInformation($"JSON do evento AlunoAtualizado a ser publicado: {jsonEvento}");
 
                 var body = JsonSerializer.SerializeToUtf8Bytes(evento);
-
+                _logger.LogInformation($"Confirmação Definitiva (evento): {evento}");
+                _logger.LogInformation($"Confirmação Definitiva (jsonEvento): {jsonEvento}");
                 channel.BasicPublish(exchange: "alunos.reverse.exchange",
                                     routingKey: "",
                                     basicProperties: null,
                                     body: body);
             }
 
-            return aluno; // Retorna o aluno atualizado
+            return alunoExistente; // Retorna o aluno atualizado
         }
 
         public async Task<bool> DeleteAsync(Guid id)
@@ -216,15 +217,21 @@ namespace Alunos.API.Services
 
                 var evento = new AlunoExcluidoNoMicrosservicoEvent
                 {
-                    Id = id // Usamos o ID do aluno excluído
+                    Id = id,
+                    Origem = "Microsservico",
+                    EventType = "AlunoExcluido"
                 };
 
                 var body = JsonSerializer.SerializeToUtf8Bytes(evento);
+
+                _logger.LogInformation($"[DeleteAsync] Preparando para publicar evento de exclusão para o ID: {id}"); // Adicione este log
 
                 channel.BasicPublish(exchange: "alunos.reverse.exchange",
                                     routingKey: "",
                                     basicProperties: null,
                                     body: body);
+
+                _logger.LogInformation($"[DeleteAsync] Evento de exclusão publicado para o ID: {id}"); // Adicione este log
             }
 
             return true;

@@ -11,6 +11,7 @@ public class AlunoAtualizadoNoMicrosservicoEvent
     public string Cidade { get; set; }
     public string Uf { get; set; }
     public string Cep { get; set; }
+    public string Senha { get; set; }
     public string Origem { get; set; }
-    // public string Senha { get; set; }
+    public string EventType { get; set; }
 }
