@@ -46,9 +46,9 @@ namespace Alunos.API.Services
             using (var channel = connection.CreateModel())
             {
                 channel.ExchangeDeclare(exchange: "alunos.reverse.exchange",
-                                      type: ExchangeType.Fanout,
+                                      type: ExchangeType.Direct,
                                       durable: true,
-                                      autoDelete: true);
+                                      autoDelete: false);
 
                 var evento = new AlunoCriadoNoMicrosservicoEvent
                 {
@@ -85,7 +85,7 @@ namespace Alunos.API.Services
                 _logger.LogInformation("Publicando evento: {Evento}", evento);
 
                 channel.BasicPublish(exchange: "alunos.reverse.exchange",
-                                    routingKey: "",
+                                    routingKey: "aluno.criado",
                                     basicProperties: props,
                                     body: body);
             }
@@ -165,7 +165,7 @@ namespace Alunos.API.Services
             using (var connection = _connectionFactory.CreateConnection())
             using (var channel = connection.CreateModel())
             {
-                channel.ExchangeDeclare(exchange: "alunos.reverse.exchange", type: ExchangeType.Fanout, durable: true, autoDelete: true);
+                channel.ExchangeDeclare(exchange: "alunos.reverse.exchange", type: ExchangeType.Direct, durable: true, autoDelete: false);
 
                 var evento = new AlunoAtualizadoNoMicrosservicoEvent
                 {
@@ -192,7 +192,7 @@ namespace Alunos.API.Services
                 _logger.LogInformation($"Confirmação Definitiva (evento): {evento}");
                 _logger.LogInformation($"Confirmação Definitiva (jsonEvento): {jsonEvento}");
                 channel.BasicPublish(exchange: "alunos.reverse.exchange",
-                                    routingKey: "",
+                                    routingKey: "aluno.atualizado",
                                     basicProperties: null,
                                     body: body);
             }
@@ -213,7 +213,7 @@ namespace Alunos.API.Services
             using (var connection = _connectionFactory.CreateConnection())
             using (var channel = connection.CreateModel())
             {
-                channel.ExchangeDeclare(exchange: "alunos.reverse.exchange", type: ExchangeType.Fanout, durable: true, autoDelete: true);
+                channel.ExchangeDeclare(exchange: "alunos.reverse.exchange", type: ExchangeType.Direct, durable: true, autoDelete: false);
 
                 var evento = new AlunoExcluidoNoMicrosservicoEvent
                 {
@@ -227,7 +227,7 @@ namespace Alunos.API.Services
                 _logger.LogInformation($"[DeleteAsync] Preparando para publicar evento de exclusão para o ID: {id}"); // Adicione este log
 
                 channel.BasicPublish(exchange: "alunos.reverse.exchange",
-                                    routingKey: "",
+                                    routingKey: "aluno.excluido",
                                     basicProperties: null,
                                     body: body);
 

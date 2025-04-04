@@ -12,7 +12,7 @@ public class AlunoCriadoNoMicrosservicoEvent
     public string Uf { get; set; }
     public string Cep { get; set; }
     public string Senha { get; set; }
-    public string Origem { get; set; }
-    public string EventType { get; set; }
+    public string Origem { get; set; } = "Microsservico";
+    public string EventType { get; set; } = "AlunoCriado";
     // public string Senha { get; set; }
 }

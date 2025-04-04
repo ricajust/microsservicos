@@ -51,180 +51,282 @@ namespace Alunos.API.Services
         {
             _logger.LogInformation("Consumidor iniciado");
 
+            // Declaração da exchange alunos.exchange (Fanout, como configurado no monolito)
+            _channel.ExchangeDeclare(exchange: "alunos.exchange",
+                                  type: ExchangeType.Fanout,
+                                  durable: true,
+                                  autoDelete: false);
+
+            // Binding da fila alunos.queue com a exchange alunos.exchange
+            _channel.QueueBind(queue: "alunos.queue",
+                              exchange: "alunos.exchange",
+                              routingKey: ""); // Routing key é ignorada para Fanout
+
             var consumer = new EventingBasicConsumer(_channel);
             consumer.Received += async (model, ea) =>
             {
-                try
+                using (var scope = _serviceProvider.CreateScope())
                 {
-                    var body = ea.Body.ToArray();
-                    var message = Encoding.UTF8.GetString(body);
-                    _logger.LogInformation($"📥 Mensagem recebida: {message}");
-
-                    JsonNode eventoNode = JsonNode.Parse(message);
-                    var originNode = eventoNode?["origin"];
-                    string origin = originNode?.GetValue<string>();
-                    var eventTypeNode = eventoNode?["eventType"];
-                    string eventType = eventTypeNode?.GetValue<string>();
-
-                    if (!string.IsNullOrEmpty(origin) && origin.ToLower() == "monolito")
+                    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                    try
                     {
-                        if (!string.IsNullOrEmpty(eventType))
-                        {
-                            if (eventType.ToLower() == "alunocriado")
-                            {
-                                _logger.LogInformation($"Evento AlunoCriado ignorado (origem: monolito).");
-                                _channel.BasicAck(ea.DeliveryTag, false);
-                                return;
-                            }
-                            else if (eventType.ToLower() == "alunoatualizado")
-                            {
-                                _logger.LogInformation($"Evento AlunoAtualizado ignorado (origem: monolito).");
-                                _channel.BasicAck(ea.DeliveryTag, false);
-                                return;
-                            }
-                            else if (eventType.ToLower() == "alunoexcluido")
-                            {
-                                _logger.LogInformation($"Evento AlunoExcluido ignorado (origem: monolito).");
-                                _channel.BasicAck(ea.DeliveryTag, false);
-                                return;
-                            }
-                        }
-                        _logger.LogInformation($"Evento ignorado (origem: monolito, tipo desconhecido).");
-                        _channel.BasicAck(ea.DeliveryTag, false);
-                        return;
-                    }
+                        var body = ea.Body.ToArray();
+                        var message = Encoding.UTF8.GetString(body);
+                        _logger.LogInformation($"📥 Mensagem recebida: {message}");
 
-                    using (var scope = _serviceProvider.CreateScope())
-                    {
-                        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                        JsonNode eventoNode = JsonNode.Parse(message);
+                        var alunoNode = eventoNode?["aluno"]; // Declare alunoNode aqui
+                        string origin = alunoNode?["origem"]?.GetValue<string>();
+                        string eventType = alunoNode?["eventType"]?.GetValue<string>();
 
-                        // Verifica primeiro se é uma mensagem de exclusão (contém apenas o "id")
-                        if (message.StartsWith("{\"id\":") && message.EndsWith("}") && !message.Contains("\"nome\"") && !message.Contains("\"cpf\""))
+                        if (!string.IsNullOrEmpty(origin) && origin.ToLower() == "monolito")
                         {
-                            var alunoExcluidoDTO = JsonSerializer.Deserialize<AlunoExcluidoDTO>(message, _jsonOptions);
-                            if (alunoExcluidoDTO != null)
+                            if (!string.IsNullOrEmpty(eventType))
                             {
-                                _logger.LogInformation($"Tentando excluir aluno com ID: {alunoExcluidoDTO.Id}");
-                                var alunoParaExcluir = await dbContext.Alunos.FindAsync(alunoExcluidoDTO.Id);
-                                if (alunoParaExcluir != null)
+                                if (eventType.ToLower() == "alunocriado")
                                 {
-                                    dbContext.Alunos.Remove(alunoParaExcluir);
-                                    await dbContext.SaveChangesAsync();
-                                    _logger.LogInformation($"Aluno excluído com ID: {alunoParaExcluir.Id}");
+                                    _logger.LogInformation($"Evento AlunoCriado recebido do monolito: {alunoNode}");
+
+                                    if (alunoNode == null)
+                                    {
+                                        _logger.LogWarning("Estrutura da mensagem de aluno (criação) inválida");
+                                        return;
+                                    }
+
+                                    var alunoDTO = alunoNode.Deserialize<AlunoDTO>(_jsonOptions);
+                                    _logger.LogInformation($"🔄 Processando aluno ID: {alunoDTO.Id} (Monolito)");
+
+                                    if (alunoNode["dataNascimento"]?.AsArray().Count == 3)
+                                    {
+                                        var dataArray = alunoNode["dataNascimento"].AsArray();
+                                        alunoDTO.DataNascimento = new DateTime(
+                                            dataArray[0].GetValue<int>(),
+                                            dataArray[1].GetValue<int>(),
+                                            dataArray[2].GetValue<int>());
+                                    }
+
+                                    alunoDTO.Cpf = Regex.Replace(alunoDTO.Cpf ?? "", "[^0-9]", "");
+
+                                    if (string.IsNullOrWhiteSpace(alunoDTO.Cpf))
+                                    {
+                                        _logger.LogError("CPF inválido");
+                                        return;
+                                    }
+
+                                    var existingAluno = await dbContext.Alunos
+                                        .Where(a => a.Id == alunoDTO.Id)
+                                        .FirstOrDefaultAsync();
+
+                                    if (existingAluno == null)
+                                    {
+                                        var novoAluno = new Aluno
+                                        {
+                                            Id = alunoDTO.Id,
+                                            Nome = alunoDTO.Nome,
+                                            Cpf = alunoDTO.Cpf,
+                                            DataNascimento = alunoDTO.DataNascimento,
+                                            Email = alunoDTO.Email,
+                                            Telefone = alunoDTO.Telefone,
+                                            Endereco = alunoDTO.Endereco,
+                                            Bairro = alunoDTO.Bairro,
+                                            Cidade = alunoDTO.Cidade,
+                                            Uf = alunoDTO.Uf,
+                                            Cep = alunoDTO.Cep,
+                                            Senha = alunoDTO.Senha
+                                        };
+                                        await dbContext.Alunos.AddAsync(novoAluno);
+                                        await dbContext.SaveChangesAsync();
+                                        _logger.LogInformation($"✅ Aluno criado (Monolito) - ID: {novoAluno.Id}");
+                                    }
+                                    else
+                                    {
+                                        _logger.LogWarning($"Aluno com ID {alunoDTO.Id} já existe (Monolito).");
+                                    }
                                 }
-                                else
+                                else if (eventType.ToLower() == "alunoatualizado")
                                 {
-                                    _logger.LogWarning($"Tentativa de excluir aluno com ID {alunoExcluidoDTO.Id}, mas não encontrado.");
+                                    _logger.LogInformation($"Evento AlunoAtualizado recebido do monolito: {alunoNode}");
+
+                                    if (alunoNode == null)
+                                    {
+                                        _logger.LogWarning("Estrutura da mensagem de aluno (atualização) inválida");
+                                        return;
+                                    }
+
+                                    var alunoDTO = alunoNode.Deserialize<AlunoDTO>(_jsonOptions);
+                                    _logger.LogInformation($"🔄 Processando aluno ID: {alunoDTO.Id} (Monolito)");
+
+                                    if (alunoNode["dataNascimento"]?.AsArray().Count == 3)
+                                    {
+                                        var dataArray = alunoNode["dataNascimento"].AsArray();
+                                        alunoDTO.DataNascimento = new DateTime(
+                                            dataArray[0].GetValue<int>(),
+                                            dataArray[1].GetValue<int>(),
+                                            dataArray[2].GetValue<int>());
+                                    }
+
+                                    alunoDTO.Cpf = Regex.Replace(alunoDTO.Cpf ?? "", "[^0-9]", "");
+
+                                    if (string.IsNullOrWhiteSpace(alunoDTO.Cpf))
+                                    {
+                                        _logger.LogError("CPF inválido");
+                                        return;
+                                    }
+
+                                    var existingAluno = await dbContext.Alunos
+                                        .Where(a => a.Id == alunoDTO.Id)
+                                        .FirstOrDefaultAsync();
+
+                                    if (existingAluno != null)
+                                    {
+                                        existingAluno.Nome = alunoDTO.Nome;
+                                        existingAluno.Cpf = alunoDTO.Cpf;
+                                        existingAluno.DataNascimento = alunoDTO.DataNascimento;
+                                        existingAluno.Email = alunoDTO.Email;
+                                        existingAluno.Telefone = alunoDTO.Telefone;
+                                        existingAluno.Endereco = alunoDTO.Endereco;
+                                        existingAluno.Bairro = alunoDTO.Bairro;
+                                        existingAluno.Cidade = alunoDTO.Cidade;
+                                        existingAluno.Uf = alunoDTO.Uf;
+                                        existingAluno.Cep = alunoDTO.Cep;
+                                        existingAluno.Senha = alunoDTO.Senha;
+
+                                        await dbContext.SaveChangesAsync();
+                                        _logger.LogInformation($"✅ Aluno atualizado (Monolito) - ID: {existingAluno.Id}");
+                                    }
+                                    else
+                                    {
+                                        _logger.LogWarning($"Tentativa de atualizar aluno (Monolito) com ID {alunoDTO.Id}, mas não encontrado.");
+                                    }
+                                }
+                                else if (eventType.ToLower() == "alunoexcluido")
+                                {
+                                    _logger.LogInformation($"Evento AlunoExcluido recebido do monolito: {alunoNode}");
+                                    var idToDelete = alunoNode?["id"]?.GetValue<Guid>();
+                                    if (idToDelete.HasValue)
+                                    {
+                                        var alunoParaExcluir = await dbContext.Alunos.FindAsync(idToDelete.Value);
+                                        if (alunoParaExcluir != null)
+                                        {
+                                            dbContext.Alunos.Remove(alunoParaExcluir);
+                                            await dbContext.SaveChangesAsync();
+                                            _logger.LogInformation($"Aluno excluído (Monolito) com ID: {alunoParaExcluir.Id}");
+                                        }
+                                        else
+                                        {
+                                            _logger.LogWarning($"Tentativa de excluir aluno (Monolito) com ID {idToDelete.Value}, mas não encontrado.");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        _logger.LogWarning("ID de aluno para exclusão não encontrado na mensagem do monolito.");
+                                    }
                                 }
                             }
-                            else
-                            {
-                                _logger.LogWarning($"Erro ao desserializar AlunoExcluidoDTO: {message}");
-                            }
+                            _logger.LogInformation($"Evento ignorado (origem: monolito, tipo desconhecido).");
+                            _channel.BasicAck(ea.DeliveryTag, false);
+                            return;
                         }
-                        // Se não for exclusão, verifica se é criação ou atualização (contém "nome" e "cpf")
-                        else if (message.Contains("\"nome\"") && message.Contains("\"cpf\""))
+
+                        // Lógica para eventos originados no microsserviço
+                        if (!string.IsNullOrEmpty(origin) && origin.ToLower() != "monolito")
                         {
-                            var alunoNode = eventoNode?["aluno"];
-
-                            if (alunoNode == null)
+                            if (!string.IsNullOrEmpty(eventType))
                             {
-                                _logger.LogWarning("Estrutura da mensagem de aluno (criação/atualização) inválida");
-                                return;
-                            }
-
-                            var alunoDTO = alunoNode.Deserialize<AlunoDTO>(_jsonOptions);
-                            _logger.LogInformation($"🔄 Processando aluno ID: {alunoDTO.Id}");
-
-                            // Processamento da data de nascimento
-                            if (alunoNode["dataNascimento"]?.AsArray().Count == 3)
-                            {
-                                var dataArray = alunoNode["dataNascimento"].AsArray();
-                                alunoDTO.DataNascimento = new DateTime(
-                                    dataArray[0].GetValue<int>(),
-                                    dataArray[1].GetValue<int>(),
-                                    dataArray[2].GetValue<int>());
-                            }
-
-                            // Limpeza do CPF
-                            alunoDTO.Cpf = Regex.Replace(alunoDTO.Cpf ?? "", "[^0-9]", "");
-
-                            if (string.IsNullOrWhiteSpace(alunoDTO.Cpf))
-                            {
-                                _logger.LogError("CPF inválido");
-                                return;
-                            }
-
-                            var existingAluno = await dbContext.Alunos
-                                .Where(a => a.Id == alunoDTO.Id)
-                                .FirstOrDefaultAsync();
-
-                            if (existingAluno == null)
-                            {
-                                // Verifica se já existe um aluno com o mesmo CPF
-                                var alunoComMesmoCpf = await dbContext.Alunos
-                                    .Where(a => a.Cpf == alunoDTO.Cpf)
-                                    .FirstOrDefaultAsync();
-
-                                if (alunoComMesmoCpf != null)
+                                if (eventType.ToLower() == "alunocriado" && message.Contains("\"nome\"") && message.Contains("\"cpf\""))
                                 {
-                                    _logger.LogWarning($"Tentativa de criar aluno com CPF duplicado: {alunoDTO.Cpf}");
-                                    _channel.BasicAck(ea.DeliveryTag, false);
-                                    return;
+                                    var alunoDTO = JsonSerializer.Deserialize<AlunoDTO>(message, _jsonOptions);
+                                    if (alunoDTO != null)
+                                    {
+                                        var existingAluno = await dbContext.Alunos.Where(a => a.Cpf == alunoDTO.Cpf).FirstOrDefaultAsync();
+                                        if (existingAluno == null)
+                                        {
+                                            var novoAluno = new Aluno
+                                            {
+                                                Id = alunoDTO.Id,
+                                                Nome = alunoDTO.Nome,
+                                                Cpf = alunoDTO.Cpf,
+                                                DataNascimento = alunoDTO.DataNascimento,
+                                                Email = alunoDTO.Email,
+                                                Telefone = alunoDTO.Telefone,
+                                                Endereco = alunoDTO.Endereco,
+                                                Bairro = alunoDTO.Bairro,
+                                                Cidade = alunoDTO.Cidade,
+                                                Uf = alunoDTO.Uf,
+                                                Cep = alunoDTO.Cep,
+                                                Senha = alunoDTO.Senha
+                                            };
+                                            await dbContext.Alunos.AddAsync(novoAluno);
+                                            await dbContext.SaveChangesAsync();
+                                            _logger.LogInformation($"✅ Aluno criado - ID: {novoAluno.Id}");
+                                        }
+                                        else
+                                        {
+                                            _logger.LogWarning($"Tentativa de criar aluno com CPF duplicado: {alunoDTO.Cpf}");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        _logger.LogWarning($"Erro ao desserializar AlunoDTO (criação): {message}");
+                                    }
                                 }
-
-                                // Criação de novo aluno
-                                var novoAluno = new Aluno
+                                else if (eventType.ToLower() == "alunoatualizado" && message.Contains("\"nome\"") && message.Contains("\"cpf\""))
                                 {
-                                    Id = alunoDTO.Id,
-                                    Nome = alunoDTO.Nome,
-                                    Cpf = alunoDTO.Cpf,
-                                    DataNascimento = alunoDTO.DataNascimento,
-                                    Email = alunoDTO.Email,
-                                    Telefone = alunoDTO.Telefone,
-                                    Endereco = alunoDTO.Endereco,
-                                    Bairro = alunoDTO.Bairro,
-                                    Cidade = alunoDTO.Cidade,
-                                    Uf = alunoDTO.Uf,
-                                    Cep = alunoDTO.Cep,
-                                    Senha = alunoDTO.Senha
-                                };
-                                await dbContext.Alunos.AddAsync(novoAluno);
-                                _logger.LogInformation($"✅ Aluno criado - ID: {novoAluno.Id}");
+                                    var alunoExcluidoDTO = JsonSerializer.Deserialize<AlunoExcluidoDTO>(message, _jsonOptions);
+                                    if (alunoExcluidoDTO != null)
+                                    {
+                                        _logger.LogInformation($"Tentando excluir aluno com ID: {alunoExcluidoDTO.Id}");
+                                        var alunoParaExcluir = await dbContext.Alunos.FindAsync(alunoExcluidoDTO.Id);
+                                        if (alunoParaExcluir != null)
+                                        {
+                                            dbContext.Alunos.Remove(alunoParaExcluir);
+                                            await dbContext.SaveChangesAsync();
+                                            _logger.LogInformation($"Aluno excluído com ID: {alunoParaExcluir.Id}");
+                                        }
+                                        else
+                                        {
+                                            _logger.LogWarning($"Tentativa de excluir aluno com ID {alunoExcluidoDTO.Id}, mas não encontrado.");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        _logger.LogWarning($"Erro ao desserializar AlunoExcluidoDTO: {message}");
+                                    }
+                                }
+                                else if (eventType.ToLower() == "alunoexcluido" && message.StartsWith("{\"id\":") && message.EndsWith("}") && !message.Contains("\"nome\"") && !message.Contains("\"cpf\""))
+                                {
+                                    var alunoExcluidoDTO = JsonSerializer.Deserialize<AlunoExcluidoDTO>(message, _jsonOptions);
+                                    if (alunoExcluidoDTO != null)
+                                    {
+                                        _logger.LogInformation($"Tentando excluir aluno com ID: {alunoExcluidoDTO.Id}");
+                                        var alunoParaExcluir = await dbContext.Alunos.FindAsync(alunoExcluidoDTO.Id);
+                                        if (alunoParaExcluir != null)
+                                        {
+                                            dbContext.Alunos.Remove(alunoParaExcluir);
+                                            await dbContext.SaveChangesAsync();
+                                            _logger.LogInformation($"Aluno excluído com ID: {alunoParaExcluir.Id}");
+                                        }
+                                        else
+                                        {
+                                            _logger.LogWarning($"Tentativa de excluir aluno com ID {alunoExcluidoDTO.Id}, mas não encontrado.");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        _logger.LogWarning($"Erro ao desserializar AlunoExcluidoDTO: {message}");
+                                    }
+                                }
                             }
-                            else
-                            {
-                                // Atualização do aluno existente
-                                existingAluno.Nome = alunoDTO.Nome;
-                                existingAluno.Cpf = alunoDTO.Cpf;
-                                existingAluno.DataNascimento = alunoDTO.DataNascimento;
-                                existingAluno.Email = alunoDTO.Email;
-                                existingAluno.Telefone = alunoDTO.Telefone;
-                                existingAluno.Endereco = alunoDTO.Endereco;
-                                existingAluno.Bairro = alunoDTO.Bairro;
-                                existingAluno.Cidade = alunoDTO.Cidade;
-                                existingAluno.Uf = alunoDTO.Uf;
-                                existingAluno.Cep = existingAluno.Cep; // Mantém o CEP existente, se não vier no DTO
-                                if (!string.IsNullOrEmpty(alunoDTO.Cep)) existingAluno.Cep = alunoDTO.Cep;
-                                existingAluno.Senha = alunoDTO.Senha;
-
-                                await dbContext.SaveChangesAsync();
-                                _logger.LogInformation($"🔄 Aluno atualizado - ID: {existingAluno.Id}");
-                            }
-                        }
-                        else
-                        {
-                            _logger.LogWarning($"Estrutura da mensagem desconhecida ou inválida: {message}");
                         }
 
                         await dbContext.SaveChangesAsync();
                         _channel.BasicAck(ea.DeliveryTag, false);
                     }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Erro ao processar mensagem");
-                    // Não fazemos Ack para tentar reprocessar
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Erro ao processar mensagem");
+                        // Não fazemos Ack para tentar reprocessar
+                    }
                 }
             };
 
