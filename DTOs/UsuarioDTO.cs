@@ -16,5 +16,6 @@ namespace Alunos.API.DTOs
         public string Uf { get; set; }
         public string Cep { get; set; }
         public string Senha { get; set; }
+        public string Origem { get; set; } = "";
     }
 }

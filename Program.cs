@@ -10,8 +10,8 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Adicione isto temporariamente no Program.cs
-builder.Services.AddHostedService<TemporaryConsumerTest>(); // <-- Linha temporária
-// builder.Services.AddHostedService<AlunoEventHandler>();
+// builder.Services.AddHostedService<TemporaryConsumerTest>(); // <-- Linha temporária
+builder.Services.AddHostedService<AlunoEventHandler>();
 
 // Pegando a string de conexão do appsettings.json
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -27,6 +27,11 @@ builder.Services.AddScoped<IAlunoService, AlunoService>();
 builder.Services.AddScoped<IUsuarioService, UsuarioService>();
 builder.Services.AddScoped<IAlunoRepository, AlunoRepository>();
 builder.Services.AddScoped<IUsuarioRepository, UsuarioRepository>();
+builder.Services.AddSingleton<RabbitMQ.Client.IConnectionFactory>(sp =>
+{
+    var factory = new RabbitMQ.Client.ConnectionFactory() { HostName = "localhost" }; // Ajuste as configurações conforme necessário
+    return factory;
+});
 
 var app = builder.Build();
 
