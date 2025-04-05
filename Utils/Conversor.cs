@@ -52,8 +52,15 @@ namespace Alunos.API.Utils
             {
                 Id = aluno.Id,
                 Nome = aluno.Nome,
-                Email = aluno.Email
-                // Adicione outros campos necessários
+                Cpf = aluno.Cpf,
+                DataNascimento = aluno.DataNascimento,
+                Email = aluno.Email,
+                Telefone = aluno.Telefone,
+                Endereco = aluno.Endereco,
+                Bairro = aluno.Bairro,
+                Cidade = aluno.Cidade,
+                Uf = aluno.Uf,
+                Cep = aluno.Cep
             };
         }
     }
