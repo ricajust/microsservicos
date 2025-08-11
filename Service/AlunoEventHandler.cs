@@ -34,7 +34,48 @@ namespace Alunos.API.Services
                 Converters = { new DateTimeArrayConverter() } // Registra o conversor customizado
             };
 
-            var factory = new ConnectionFactory() { HostName = "localhost" };
+            var factory = new ConnectionFactory
+            {
+                HostName = "rabbitmq", // Alterar se necessário
+                Port = 5672,
+                UserName = "microsservico",
+                Password = "microsservico123",
+                RequestedConnectionTimeout = TimeSpan.FromSeconds(30)
+            };
+
+            int retryCount = 5; // Número de tentativas de conexão
+            while (retryCount > 0)
+            {
+                try
+                {
+                    _logger.LogInformation($"Conectando ao RabbitMQ - Host: {factory.HostName}, Porta: {factory.Port}, Usuário: {factory.UserName}");
+
+                    _connection = factory.CreateConnection();
+                    _channel = _connection.CreateModel();
+
+                    // Configuração robusta da fila
+                    _channel.QueueDeclare(
+                        queue: "alunos.queue",
+                        durable: true,
+                        exclusive: false,
+                        autoDelete: false,
+                        arguments: null);
+
+                    _logger.LogInformation("Conexão com RabbitMQ estabelecida!");
+                    break; // Sai do loop se a conexão for bem-sucedida
+                }
+                catch (Exception ex)
+                {
+                    retryCount--;
+                    _logger.LogWarning($"Erro ao conectar ao RabbitMQ. Tentativas restantes: {retryCount}. Erro: {ex.Message}");
+                    Thread.Sleep(5000); // Aguarda 5 segundos antes de tentar novamente
+                }
+            }
+
+            if (_connection == null || _channel == null)
+            {
+                throw new Exception("Não foi possível estabelecer uma conexão com o RabbitMQ após múltiplas tentativas.");
+            }
             _connection = factory.CreateConnection();
             _channel = _connection.CreateModel();
 

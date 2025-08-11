@@ -1,36 +1,15 @@
-FROM mcr.microsoft.com/mssql/server:2022-latest
+# Use a imagem base do .NET SDK para construir a aplicação
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY ["Alunos.API.csproj", "./"]
+RUN dotnet restore "Alunos.API.csproj"
+COPY . .
+WORKDIR "/src/"
+RUN dotnet build "Alunos.API.csproj" -c Release -o /app/build
+RUN dotnet tool install --global dotnet-ef
 
-USER root
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl wget sudo gnupg software-properties-common && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null && \
-    add-apt-repository "$(wget -qO- https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list)"
-
-ENV DEBIAN_FRONTEND=noninteractive
-ENV ACCEPT_EULA=Y
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends mssql-tools && \
-    rm -rf /var/lib/apt/lists/*
-
-ENV PATH="/opt/mssql-tools/bin:${PATH}"
-
-USER mssql
-
-## PARA EXECUTAR O CONTAINER 
-#para limpar o volume
-#docker volume rm $(docker volume ls -qf name=tcc_edugo_microsservico_Alunos.API_sql-server-data) # Substitua pelo nome correto do volume se este não for o padrão
-#docker run -d --name sql-server -p 1499:1433 -e ACCEPT_EULA=Y -e SA_PASSWORD="SenhaMuitoForte@123" -v ./sql-server-data:/var/opt/mssql/data sql-server:latest
-#docker run -d --name sql-server -p 1499:1433 \
-#-e ACCEPT_EULA=Y \
-#-e SA_PASSWORD="SenhaMuitoForte@123" \
-#-v $(pwd)/init.sql:/docker-entrypoint-initdb.d/init.sql \
-#-v ./sql-server-data:/var/opt/mssql/data \
-#sql-server:latest
-
-
-#PARA ACESSAR O SQLCMD
-#sqlcmd -S localhost -U sa -P "SenhaMuitoForte@123"
+# Altera a imagem base para o SDK, aumenta o tamanho da sua imagem final, pois o SDK é maior que o runtime
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS publish
+WORKDIR /app
+COPY --from=build /app/build .
+ENTRYPOINT ["dotnet", "Alunos.API.dll"]

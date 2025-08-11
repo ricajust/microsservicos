@@ -1,42 +1,127 @@
-version: '3.8'
-
 services:
-  alunosapi:
-    image: api-alunos
+  # Monolito
+  monolito-app:
+    build:
+      context: /home/ricajust/Projects/tcc_edugo/monolito/edugo_tcc
+      dockerfile: Dockerfile
+    container_name: monolito-app
     ports:
-      - "5113:8080"
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://monolito-db:5432/edugo
+      SPRING_DATASOURCE_USERNAME: ricajust
+      SPRING_DATASOURCE_PASSWORD: '123'
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: microsservico
+      SPRING_RABBITMQ_PASSWORD: microsservico123
     depends_on:
-      - sql-alunos
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ConnectionStrings__DefaultConnection=Server=sql-alunos,1499;Database=AlunosDb;User ID=sa;Password=SenhaMuitoForte@123;TrustServerCertificate=True
+      monolito-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
-      - edugo_tcc_net
+      - alunosapi_edugo_tcc_net
 
-  sql-alunos:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+  monolito-db:
+    build:
+      context: /home/ricajust/Projects/tcc_edugo/monolito/edugo_tcc
+      dockerfile: DockerfileDb
+    container_name: monolito-db
     ports:
-      - "1433:1433"
+      - "5433:5432"
     environment:
-      - ACCEPT_EULA=Y
-      - SA_PASSWORD=Edug0@2025!
-    networks:
-      - edugo_tcc_net
+      POSTGRES_USER: ricajust
+      POSTGRES_PASSWORD: '123'
+      POSTGRES_DB: edugo
     volumes:
-      - ./sql:/docker-entrypoint-initdb.d
+      - monolito_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ricajust -d edugo"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alunosapi_edugo_tcc_net
 
-  # services:
-  #   rabbitmq:
-  #     image: rabbitmq:3-management
-  #     ports:
-  #       - "5672:5672"
-  #       - "15672:15672"
-  #     healthcheck:
-  #       test: ["CMD", "rabbitmq-diagnostics", "status"]
-  #       interval: 10s
-  #       timeout: 5s
-  #       retries: 3
+  # Microsserviço
+  microsservico-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: microsservico-app
+    ports:
+      - "8081:8080" # Porta diferente para não conflitar com o monolito
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: "Server=microsservico-db,1433;Database=AlunosDb;User ID=sa;Password=SenhaMuitoForte@123;TrustServerCertificate=True"
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Port: 5672
+      RabbitMQ__UserName: microsservico
+      RabbitMQ__Password: microsservico123
+    depends_on:
+      microsservico-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - alunosapi_edugo_tcc_net
+    command: sh -c "sleep 20 && dotnet tool install --global dotnet-ef && dotnet ef database update --connection \"Server=microsservico-db,1433;Database=AlunosDb;User ID=sa;Password=SenhaMuitoForte@123;TrustServerCertificate=True\" && dotnet Alunos.API.dll"
+
+  microsservico-db:
+    build:
+      context: .
+      dockerfile: DockerfileDb
+    image: microsservico-db # Removi a definição duplicada da imagem
+    container_name: microsservico-db
+    ports:
+      - "1500:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: SenhaMuitoForte@123
+    volumes:
+      - ./sql-scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./sql-scripts/alunos.csv:/import/alunos.csv
+      - ./mssql_data_microsservico:/var/opt/mssql/data # Apontando para o diretório local
+    networks:
+      - alunosapi_edugo_tcc_net
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "SenhaMuitoForte@123", "-Q", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Fila
+  rabbitmq:
+    build:
+      context: .
+      dockerfile: DockerfileRabbit
+    container_name: rabbitmq
+    hostname: rabbitmq-server
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: microsservico
+      RABBITMQ_DEFAULT_PASS: microsservico123
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbitmq_management load_definitions \"/etc/rabbitmq/definitions.json\""
+    volumes:
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+      - ./rabbitmq_definitions.json:/etc/rabbitmq/definitions.json
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - alunosapi_edugo_tcc_net
+
+
+volumes:
+  monolito_db_data:
+  microsservico_db_data:
 
 networks:
-  edugo_tcc_net:
+  alunosapi_edugo_tcc_net:
+    name: alunosapi_edugo_tcc_net
     driver: bridge

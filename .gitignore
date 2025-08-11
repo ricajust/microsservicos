@@ -6,6 +6,7 @@
 **/Migrations/
 # Ou, se quiser ignorar só as dlls:
 *.dll
+mssql_data_microsservico/
 
 # Ignore a pasta publish (geralmente criada pelo dotnet publish)
 publish/

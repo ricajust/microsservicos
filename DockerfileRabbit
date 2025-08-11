@@ -1,0 +1,11 @@
+FROM rabbitmq:3-management
+
+COPY rabbitmq_definitions.json /etc/rabbitmq/definitions.json
+
+RUN rabbitmq-plugins enable --offline rabbitmq_management
+
+COPY entrypoint.sh /usr/local/bin/
+
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+CMD ["/usr/local/bin/entrypoint.sh"]

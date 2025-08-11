@@ -2,6 +2,7 @@ using Alunos.API.Data;
 using Alunos.API.Repositories;
 using Alunos.API.Services;
 using Microsoft.EntityFrameworkCore;
+using RabbitMQ.Client;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,11 +28,33 @@ builder.Services.AddScoped<IAlunoService, AlunoService>();
 builder.Services.AddScoped<IUsuarioService, UsuarioService>();
 builder.Services.AddScoped<IAlunoRepository, AlunoRepository>();
 builder.Services.AddScoped<IUsuarioRepository, UsuarioRepository>();
-builder.Services.AddSingleton<RabbitMQ.Client.IConnectionFactory>(sp =>
+// builder.Services.AddSingleton<RabbitMQ.Client.IConnectionFactory>(sp =>
+// {
+//     var configuration = sp.GetRequiredService<IConfiguration>();
+//     var factory = new RabbitMQ.Client.ConnectionFactory()
+//     {
+//         Uri = new Uri($"amqp://guest:guest@rabbitmq:5672")
+//     };
+//     return factory;
+// });
+builder.Services.AddSingleton<IConnectionFactory>(sp =>
 {
-    var factory = new RabbitMQ.Client.ConnectionFactory() { HostName = "localhost" }; // Ajuste as configurações conforme necessário
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var factory = new ConnectionFactory
+    {
+        HostName = configuration["RabbitMQ:HostName"], // Obtendo o HostName do appsettings.json
+        Port = int.Parse(configuration["RabbitMQ:Port"]), // Obtendo a Porta
+        UserName = configuration["RabbitMQ:UserName"], // Obtendo o UserName
+        Password = configuration["RabbitMQ:Password"],  // Obtendo a Password
+    RequestedConnectionTimeout = TimeSpan.FromSeconds(30)
+    };
     return factory;
 });
+builder.Services.AddHttpsRedirection(options =>
+{
+    options.HttpsPort = null; // Desabilita redirecionamento para HTTPS
+});
+
 
 var app = builder.Build();
 
